@@ -17,6 +17,13 @@ class Job
     private $id;
 
     /**
+     * PID.
+     *
+     * @var string
+     */
+    private $pid = null;
+
+    /**
      * Command to execute.
      *
      * @var mixed
@@ -49,7 +56,7 @@ class Job
      *
      * @var Cron\CronExpression
      */
-    private $executionTime;
+    public $executionTime;
 
     /**
      * Job schedule year.
@@ -185,6 +192,17 @@ class Job
     }
 
     /**
+     * Get the PID.
+     *
+     * @return string
+     */
+    public function getPid()
+    {
+        return $this->pid;
+    }
+
+
+    /**
      * Check if the Job is due to run.
      * It accepts as input a DateTime used to check if
      * the job is due. Defaults to job creation time.
@@ -293,6 +311,8 @@ class Job
             return $compiled;
         }
 
+        $isWin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+
         // Augment with any supplied arguments
         foreach ($this->args as $key => $value) {
             $compiled .= ' ' . escapeshellarg($key);
@@ -303,8 +323,13 @@ class Job
 
         // Add the boilerplate to redirect the output to file/s
         if (count($this->outputTo) > 0) {
-            $compiled .= ' | tee ';
-            $compiled .= $this->outputMode === 'a' ? '-a ' : '';
+            if ($isWin) {
+                $compiled .= ' ';
+                $compiled .= $this->outputMode === 'a' ? '>> ' : '> ';
+            } else {
+                $compiled .= ' | tee ';
+                $compiled .= $this->outputMode === 'a' ? '-a ' : '';
+            }
             foreach ($this->outputTo as $file) {
                 $compiled .= $file . ' ';
             }
@@ -314,14 +339,23 @@ class Job
 
         // Add boilerplate to remove lockfile after execution
         if ($this->lockFile) {
-            $compiled .= '; rm ' . $this->lockFile;
+            if ($isWin) {
+                $compiled .= ' & rm ' . $this->lockFile;
+            } else {
+                $compiled .= '; rm ' . $this->lockFile;
+            }
         }
 
         // Add boilerplate to run in background
         if ($this->canRunInBackground()) {
             // Parentheses are need execute the chain of commands in a subshell
             // that can then run in background
-            $compiled = '(' . $compiled . ') > /dev/null 2>&1 &';
+            if ($isWin) {
+                $compiled = '(' . $compiled . ') > NUL 2>&1';
+            }
+            else {
+                $compiled = '(' . $compiled . ') > /dev/null 2>&1 & echo $!';
+            }
         }
 
         return trim($compiled);
@@ -392,7 +426,9 @@ class Job
         if (is_callable($compiled)) {
             $this->output = $this->exec($compiled);
         } else {
+            //echo  "exec($compiled, $this->output, $this->returnCode)\n";
             exec($compiled, $this->output, $this->returnCode);
+            $this->pid = intval($this->output[0] ?? 0); // only on linux
         }
 
         $this->finalise();

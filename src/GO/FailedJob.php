@@ -4,15 +4,8 @@ use Exception;
 
 class FailedJob
 {
-    /**
-     * @var Job
-     */
-    private $job;
-
-    /**
-     * @var Exception
-     */
-    private $exception;
+    private Job $job;
+    private Exception $exception;
 
     public function __construct(Job $job, Exception $exception)
     {

@@ -1,4 +1,6 @@
-<?php namespace GO;
+<?php
+
+namespace GO;
 
 use DateTime;
 use Exception;
@@ -84,7 +86,7 @@ class Scheduler
     /**
      * Get the queued jobs.
      *
-     * @return array
+     * @return array<Job>
      */
     public function getQueuedJobs()
     {
@@ -96,11 +98,14 @@ class Scheduler
      *
      * @param  callable  $fn  The function to execute
      * @param  array  $args  Optional arguments to pass to the php script
-     * @param  string  $id   Optional custom identifier
+     * @param  string  $id   custom identifier
      * @return Job
      */
-    public function call(callable $fn, $args = [], $id = null)
+    public function call(callable $fn, array $args = [], ?string $id): Job
     {
+        if (!$id)
+            throw new Exception("ID is required in call()");
+
         $job = new Job($fn, $args, $id);
 
         $this->queueJob($job->configure($this->config));
@@ -119,16 +124,18 @@ class Scheduler
      */
     public function php($script, $bin = null, $args = [], $id = null)
     {
-        if (! is_string($script)) {
+        if (!is_string($script)) {
             throw new InvalidArgumentException('The script should be a valid path to a file.');
         }
 
         $bin = $bin !== null && is_string($bin) && file_exists($bin) ?
             $bin : (PHP_BINARY === '' ? '/usr/bin/php' : PHP_BINARY);
 
+        $bin = escapeshellarg($bin);
+
         $job = new Job($bin . ' ' . $script, $args, $id);
 
-        if (! file_exists($script)) {
+        if (!file_exists($script)) {
             $this->pushFailedJob(
                 $job,
                 new InvalidArgumentException('The script should be a valid path to a file.')
@@ -156,6 +163,30 @@ class Scheduler
 
         return $job;
     }
+
+    /**
+     * Run the scheduler.
+     *
+     * @param  DateTime  $runTime  Optional, run at specific moment
+     * @return array<Job>  Executed jobs
+     */
+    public function runableJobs(Datetime $runTime = null): array
+    {
+        $jobs = $this->getQueuedJobs();
+
+        if (is_null($runTime)) {
+            $runTime = new DateTime('now');
+        }
+
+        $list = [];
+        foreach ($jobs as $job) {
+            if ($job->isDue($runTime)) {
+                $list[] = $job;
+            }
+        }
+        return $list;
+    }
+
 
     /**
      * Run the scheduler.
@@ -221,7 +252,7 @@ class Scheduler
      * @param  Job  $job
      * @return Job
      */
-    private function pushExecutedJob(Job $job)
+    protected function pushExecutedJob(Job $job)
     {
         $this->executedJobs[] = $job;
 
@@ -229,7 +260,7 @@ class Scheduler
 
         // If callable, log the string Closure
         if (is_callable($compiled)) {
-            $compiled = 'Closure';
+            $compiled = 'Closure ' . $job->getId();
         }
 
         $this->addSchedulerVerboseOutput("Executing {$compiled}");
@@ -254,7 +285,7 @@ class Scheduler
      * @param  Exception  $e
      * @return Job
      */
-    private function pushFailedJob(Job $job, Exception $e)
+    protected function pushFailedJob(Job $job, Exception $e)
     {
         $this->failedJobs[] = new FailedJob($job, $e);
 
@@ -262,9 +293,7 @@ class Scheduler
 
         // If callable, log the string Closure
         if (is_callable($compiled)) {
-            $reflectionClosure = new \ReflectionFunction($compiled);
-
-            $compiled = 'Closure ' . $reflectionClosure->getClosureScopeClass()->getName();
+            $compiled = 'Closure';
         }
 
         $this->addSchedulerVerboseOutput("{$e->getMessage()}: {$compiled}");
