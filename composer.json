@@ -1,5 +1,5 @@
 {
-    "name": "peppeocchi/php-cron-scheduler",
+    "name": "pbc69/php-cron-scheduler",
     "description": "PHP Cron Job Scheduler",
     "license": "MIT",
     "keywords": ["cron job", "scheduler"],
@@ -17,7 +17,7 @@
     ],
     "minimum-stability": "dev",
     "require": {
-        "php": "^7.3 || ^8.0",
+        "php": "^8.0",
         "dragonmantank/cron-expression": "^3.0"
     },
     "require-dev": {
